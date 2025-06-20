@@ -1,9 +1,9 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { AlertTriangle, DollarSign, Target, TrendingDown, CheckCircle } from 'lucide-react';
 import { Transaction, Budget, FinancialGoal } from '@/hooks/useFinanceData';
-import { AlertTriangle, TrendingDown, Target, Calendar, Bell } from 'lucide-react';
 
 interface FinancialAlertsProps {
   transactions: Transaction[];
@@ -13,177 +13,198 @@ interface FinancialAlertsProps {
 
 const FinancialAlerts: React.FC<FinancialAlertsProps> = ({ transactions, budgets, goals }) => {
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const today = new Date();
+  
+  // Calculate current balance
+  const totalIncome = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  const totalExpenses = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  const balance = totalIncome - totalExpenses;
 
   // Budget alerts
-  const budgetAlerts = budgets
-    .filter(budget => budget.month === currentMonth)
-    .map(budget => {
-      const percentage = (budget.spent / budget.limit) * 100;
-      const remaining = budget.limit - budget.spent;
-      
-      if (percentage >= 100) {
-        return {
-          type: 'danger' as const,
-          icon: AlertTriangle,
-          title: 'Orçamento Excedido',
-          message: `Categoria "${budget.category}" excedeu o orçamento em Kz ${Math.abs(remaining).toLocaleString('pt-BR')}`,
-          value: percentage,
-        };
-      } else if (percentage >= 80) {
-        return {
-          type: 'warning' as const,
-          icon: AlertTriangle,
-          title: 'Orçamento Próximo do Limite',
-          message: `Categoria "${budget.category}" atingiu ${percentage.toFixed(1)}% do orçamento`,
-          value: percentage,
-        };
-      }
-      return null;
-    })
-    .filter(Boolean);
+  const budgetAlerts = budgets.filter(budget => 
+    budget.month === currentMonth && budget.spent > budget.limit * 0.8
+  );
 
-  // Spending trend alerts
-  const last30Days = transactions.filter(t => {
-    const transactionDate = new Date(t.date);
-    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return transactionDate >= thirtyDaysAgo && t.type === 'expense';
-  });
-
-  const previous30Days = transactions.filter(t => {
-    const transactionDate = new Date(t.date);
-    const sixtyDaysAgo = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return transactionDate >= sixtyDaysAgo && transactionDate < thirtyDaysAgo && t.type === 'expense';
-  });
-
-  const currentSpending = last30Days.reduce((sum, t) => sum + t.amount, 0);
-  const previousSpending = previous30Days.reduce((sum, t) => sum + t.amount, 0);
-  const spendingIncrease = previousSpending > 0 ? ((currentSpending - previousSpending) / previousSpending) * 100 : 0;
-
-  const spendingAlerts = [];
-  if (spendingIncrease > 20) {
-    spendingAlerts.push({
-      type: 'warning' as const,
-      icon: TrendingDown,
-      title: 'Aumento nos Gastos',
-      message: `Seus gastos aumentaram ${spendingIncrease.toFixed(1)}% nos últimos 30 dias`,
-      value: spendingIncrease,
+  // Low balance alerts
+  const lowBalanceAlerts = [];
+  if (balance < 0) {
+    lowBalanceAlerts.push({
+      type: 'negative_balance',
+      title: 'Saldo Negativo',
+      description: `Seu saldo atual é de Kz ${balance.toLocaleString('pt-BR')}. Considere reduzir despesas ou adicionar receitas.`,
+      severity: 'high'
+    });
+  } else if (balance < 1000) {
+    lowBalanceAlerts.push({
+      type: 'low_balance',
+      title: 'Saldo Baixo',
+      description: `Seu saldo atual é de Kz ${balance.toLocaleString('pt-BR')}. Recomendamos manter um saldo maior para emergências.`,
+      severity: 'medium'
     });
   }
 
   // Goal alerts
-  const goalAlerts = goals.map(goal => {
-    const daysToTarget = Math.ceil((new Date(goal.target_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const progress = (goal.current_amount / goal.target_amount) * 100;
-    const remaining = goal.target_amount - goal.current_amount;
+  const goalAlerts = goals.filter(goal => {
+    const daysUntilTarget = Math.ceil((new Date(goal.target_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    const progressPercentage = (goal.current_amount / goal.target_amount) * 100;
     
-    if (daysToTarget < 0 && progress < 100) {
-      return {
-        type: 'danger' as const,
-        icon: Target,
-        title: 'Meta Vencida',
-        message: `Meta "${goal.title}" venceu há ${Math.abs(daysToTarget)} dias`,
-        value: progress,
-      };
-    } else if (daysToTarget <= 30 && daysToTarget > 0 && progress < 80) {
-      return {
-        type: 'warning' as const,
-        icon: Calendar,
-        title: 'Meta Próxima do Vencimento',
-        message: `Meta "${goal.title}" vence em ${daysToTarget} dias. Restam Kz ${remaining.toLocaleString('pt-BR')}`,
-        value: progress,
-      };
+    return (daysUntilTarget <= 30 && progressPercentage < 80) || 
+           (daysUntilTarget <= 7 && progressPercentage < 100);
+  });
+
+  const allAlerts = [
+    ...lowBalanceAlerts,
+    ...budgetAlerts.map(budget => ({
+      type: 'budget_exceeded',
+      title: `Orçamento Excedido: ${budget.category}`,
+      description: `${((budget.spent / budget.limit) * 100).toFixed(1)}% do orçamento utilizado (Kz ${budget.spent.toLocaleString('pt-BR')} / Kz ${budget.limit.toLocaleString('pt-BR')})`,
+      severity: budget.spent > budget.limit ? 'high' : 'medium'
+    })),
+    ...goalAlerts.map(goal => ({
+      type: 'goal_reminder',
+      title: `Meta em Risco: ${goal.title}`,
+      description: `Meta de Kz ${goal.target_amount.toLocaleString('pt-BR')} com ${((goal.current_amount / goal.target_amount) * 100).toFixed(1)}% concluída. Data limite: ${new Date(goal.target_date).toLocaleDateString('pt-BR')}`,
+      severity: 'medium'
+    }))
+  ];
+
+  const getAlertIcon = (type: string) => {
+    switch (type) {
+      case 'negative_balance':
+      case 'low_balance':
+        return <DollarSign className="w-5 h-5" />;
+      case 'budget_exceeded':
+        return <TrendingDown className="w-5 h-5" />;
+      case 'goal_reminder':
+        return <Target className="w-5 h-5" />;
+      default:
+        return <AlertTriangle className="w-5 h-5" />;
     }
-    return null;
-  }).filter(Boolean);
+  };
 
-  // Income alerts
-  const currentMonthIncome = transactions
-    .filter(t => t.date.startsWith(currentMonth) && t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'high':
+        return 'bg-red-50 border-red-200 text-red-800';
+      case 'medium':
+        return 'bg-amber-50 border-amber-200 text-amber-800';
+      case 'low':
+        return 'bg-blue-50 border-blue-200 text-blue-800';
+      default:
+        return 'bg-gray-50 border-gray-200 text-gray-800';
+    }
+  };
 
-  const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1).toISOString().slice(0, 7);
-  const lastMonthIncome = transactions
-    .filter(t => t.date.startsWith(lastMonth) && t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const incomeAlerts = [];
-  if (lastMonthIncome > 0 && currentMonthIncome < lastMonthIncome * 0.8) {
-    incomeAlerts.push({
-      type: 'warning' as const,
-      icon: TrendingDown,
-      title: 'Redução na Receita',
-      message: `Receita deste mês está ${(((lastMonthIncome - currentMonthIncome) / lastMonthIncome) * 100).toFixed(1)}% menor que o mês anterior`,
-      value: (currentMonthIncome / lastMonthIncome) * 100,
-    });
-  }
-
-  const allAlerts = [...budgetAlerts, ...spendingAlerts, ...goalAlerts, ...incomeAlerts];
-
-  if (allAlerts.length === 0) {
-    return (
-      <Card className="border-0 shadow-lg bg-green-50">
-        <CardContent className="text-center py-8">
-          <Bell className="w-12 h-12 text-green-500 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-green-800 mb-2">Tudo em Ordem!</h3>
-          <p className="text-green-600">Não há alertas financeiros no momento.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const getSeverityBadge = (severity: string) => {
+    switch (severity) {
+      case 'high':
+        return <Badge variant="destructive">Alto</Badge>;
+      case 'medium':
+        return <Badge className="bg-amber-500">Médio</Badge>;
+      case 'low':
+        return <Badge className="bg-blue-500">Baixo</Badge>;
+      default:
+        return <Badge variant="secondary">Info</Badge>;
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Bell className="w-6 h-6" />
-        <h2 className="text-2xl font-bold">Alertas Financeiros</h2>
-        <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-          {allAlerts.length}
-        </span>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-2xl">
+            <AlertTriangle className="w-6 h-6 text-amber-600" />
+            Alertas Financeiros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {allAlerts.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">Tudo em Ordem!</h3>
+              <p className="text-gray-600">
+                Não há alertas financeiros no momento. Continue mantendo suas finanças organizadas!
+              </p>
       </div>
-
+          ) : (
       <div className="space-y-4">
         {allAlerts.map((alert, index) => (
-          <Card 
+                <div
             key={index} 
-            className={`border-0 shadow-lg ${
-              alert.type === 'danger' ? 'bg-red-50 border-l-4 border-l-red-500' : 
-              'bg-orange-50 border-l-4 border-l-orange-500'
-            }`}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3">
-                <alert.icon className={`w-5 h-5 mt-1 ${
-                  alert.type === 'danger' ? 'text-red-500' : 'text-orange-500'
-                }`} />
+                  className={`p-4 rounded-lg border ${getSeverityColor(alert.severity)}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3 flex-1">
+                      <div className="mt-1">
+                        {getAlertIcon(alert.type)}
+                      </div>
                 <div className="flex-1">
-                  <h4 className={`font-semibold ${
-                    alert.type === 'danger' ? 'text-red-800' : 'text-orange-800'
-                  }`}>
-                    {alert.title}
-                  </h4>
-                  <p className={`text-sm mt-1 ${
-                    alert.type === 'danger' ? 'text-red-700' : 'text-orange-700'
-                  }`}>
-                    {alert.message}
-                  </p>
-                  {alert.value !== undefined && (
-                    <div className="mt-3">
-                      <Progress 
-                        value={Math.min(alert.value, 100)} 
-                        className={`h-2 ${
-                          alert.type === 'danger' ? 'bg-red-100' : 'bg-orange-100'
-                        }`}
-                      />
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold">{alert.title}</h4>
+                          {getSeverityBadge(alert.severity)}
+                        </div>
+                        <p className="text-sm opacity-90">{alert.description}</p>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Resumo Financeiro */}
+      <Card className="border-0 shadow-lg">
+        <CardHeader>
+          <CardTitle>Resumo Financeiro</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <h4 className="font-semibold text-green-800">Receitas Totais</h4>
+              <p className="text-2xl font-bold text-green-600">
+                Kz {totalIncome.toLocaleString('pt-BR')}
+              </p>
+            </div>
+            <div className="text-center p-4 bg-red-50 rounded-lg">
+              <h4 className="font-semibold text-red-800">Despesas Totais</h4>
+              <p className="text-2xl font-bold text-red-600">
+                Kz {totalExpenses.toLocaleString('pt-BR')}
+              </p>
+            </div>
+            <div className={`text-center p-4 rounded-lg ${
+              balance < 0 
+                ? 'bg-red-50' 
+                : balance < 1000 
+                ? 'bg-amber-50' 
+                : 'bg-blue-50'
+            }`}>
+              <h4 className={`font-semibold ${
+                balance < 0 
+                  ? 'text-red-800' 
+                  : balance < 1000 
+                  ? 'text-amber-800' 
+                  : 'text-blue-800'
+              }`}>Saldo Atual</h4>
+              <p className={`text-2xl font-bold ${
+                balance < 0 
+                  ? 'text-red-600' 
+                  : balance < 1000 
+                  ? 'text-amber-600' 
+                  : 'text-blue-600'
+              }`}>
+                Kz {balance.toLocaleString('pt-BR')}
+              </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        ))}
-      </div>
     </div>
   );
 };

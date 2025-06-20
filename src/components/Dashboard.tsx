@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { Transaction, Budget, Investment } from '@/hooks/useFinanceData';
-import { TrendingUp, TrendingDown, Target, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, DollarSign, AlertTriangle } from 'lucide-react';
 
 interface DashboardProps {
   transactions: Transaction[];
@@ -65,6 +65,37 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, investment
 
   return (
     <div className="space-y-6">
+      {/* Balance Alert */}
+      {balance < 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-red-600" />
+            <div>
+              <h3 className="font-semibold text-red-800">⚠️ Saldo Negativo</h3>
+              <p className="text-red-700">
+                Seu saldo atual é de Kz {balance.toLocaleString('pt-BR')}. 
+                Considere reduzir despesas ou adicionar receitas para equilibrar suas finanças.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {balance >= 0 && balance < 1000 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-amber-600" />
+            <div>
+              <h3 className="font-semibold text-amber-800">⚠️ Saldo Baixo</h3>
+              <p className="text-amber-700">
+                Seu saldo atual é de Kz {balance.toLocaleString('pt-BR')}. 
+                Recomendamos manter um saldo maior para emergências.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Budget Alerts */}
       {budgetAlerts.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
@@ -99,7 +130,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, budgets, investment
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+        <Card className={`border-0 shadow-lg ${
+          balance < 0 
+            ? 'bg-gradient-to-br from-red-500 to-red-600' 
+            : balance < 1000 
+            ? 'bg-gradient-to-br from-amber-500 to-amber-600'
+            : 'bg-gradient-to-br from-blue-500 to-blue-600'
+        } text-white`}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Saldo</CardTitle>
             <DollarSign className="h-4 w-4" />

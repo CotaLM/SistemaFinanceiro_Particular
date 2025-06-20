@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,11 +66,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onAddTransaction }) =
     };
 
     onAddTransaction(transaction);
-
-    toast({
-      title: "Transação adicionada!",
-      description: `${formData.type === 'income' ? 'Receita' : 'Despesa'} de Kz ${parseFloat(formData.amount).toLocaleString('pt-BR')} registrada com sucesso.`,
-    });
 
     // Reset form
     setFormData({

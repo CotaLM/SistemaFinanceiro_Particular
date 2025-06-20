@@ -1,12 +1,12 @@
-
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
 import { Transaction, Budget, Investment } from '@/hooks/useFinanceData';
-import { Download, Filter, BarChart3 } from 'lucide-react';
+import { Download, Filter, BarChart3, FileText } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { downloadPDF, PDFReportData } from '@/lib/pdfGenerator';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -17,7 +17,12 @@ interface ReportsProps {
 const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments }) => {
   const [filterPeriod, setFilterPeriod] = useState('last6months');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const { toast } = useToast();
+  
+  // Refs para capturar os gráficos
+  const lineChartRef = useRef<HTMLDivElement>(null);
+  const pieChartRef = useRef<HTMLDivElement>(null);
 
   const categories = [...new Set(transactions.map(t => t.category))];
 
@@ -95,6 +100,18 @@ const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments })
 
   const netBalance = totalIncome - totalExpenses;
 
+  // Get period display name
+  const getPeriodDisplayName = () => {
+    switch (filterPeriod) {
+      case 'thisMonth': return 'Este mês';
+      case 'last3months': return 'Últimos 3 meses';
+      case 'last6months': return 'Últimos 6 meses';
+      case 'thisYear': return 'Este ano';
+      case 'all': return 'Todos os períodos';
+      default: return 'Período selecionado';
+    }
+  };
+
   // Export functionality
   const exportToCSV = () => {
     const csvContent = [
@@ -120,6 +137,56 @@ const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments })
       title: "Relatório exportado!",
       description: "O arquivo CSV foi baixado com sucesso.",
     });
+  };
+
+  const exportToPDF = async () => {
+    setIsGeneratingPDF(true);
+    
+    try {
+      const pdfData: PDFReportData = {
+        transactions: filteredTransactions,
+        totalIncome,
+        totalExpenses,
+        netBalance,
+        period: getPeriodDisplayName(),
+        category: filterCategory === 'all' ? 'Todas categorias' : filterCategory,
+        chartData,
+        pieData,
+      };
+
+      // Capturar elementos dos gráficos
+      const chartElements: HTMLElement[] = [];
+      if (lineChartRef.current) {
+        chartElements.push(lineChartRef.current);
+      }
+      if (pieChartRef.current) {
+        chartElements.push(pieChartRef.current);
+      }
+
+      const success = await downloadPDF(pdfData, chartElements);
+      
+      if (success) {
+        toast({
+          title: "PDF gerado com sucesso!",
+          description: "O relatório em PDF foi baixado.",
+        });
+      } else {
+        toast({
+          title: "Erro ao gerar PDF",
+          description: "Houve um problema ao gerar o relatório. Tente novamente.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      toast({
+        title: "Erro ao gerar PDF",
+        description: "Houve um problema ao gerar o relatório. Tente novamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingPDF(false);
+    }
   };
 
   return (
@@ -160,13 +227,25 @@ const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments })
             </Select>
           </div>
 
-          <Button 
-            onClick={exportToCSV}
-            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Exportar CSV
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={exportToCSV}
+              variant="outline"
+              className="border-green-600 text-green-600 hover:bg-green-50"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              CSV
+            </Button>
+            
+            <Button 
+              onClick={exportToPDF}
+              disabled={isGeneratingPDF}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              {isGeneratingPDF ? 'Gerando...' : 'PDF'}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -202,7 +281,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments })
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-0 shadow-lg">
+        <Card className="border-0 shadow-lg" ref={lineChartRef}>
           <CardHeader>
             <CardTitle>Evolução Financeira</CardTitle>
           </CardHeader>
@@ -242,7 +321,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, budgets, investments })
 
       {/* Pie Chart */}
       {pieData.length > 0 && (
-        <Card className="border-0 shadow-lg">
+        <Card className="border-0 shadow-lg" ref={pieChartRef}>
           <CardHeader>
             <CardTitle>Distribuição de Despesas por Categoria</CardTitle>
           </CardHeader>
